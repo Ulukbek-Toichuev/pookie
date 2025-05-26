@@ -40,18 +40,32 @@ func NewHttpWrapper(timeout int) *HttpWrapper {
 	}
 }
 
-func (hw HttpWrapper) HttpGet(uri string, headers map[string]string, params map[string]string, respBody interface{}) error {
+func (hw HttpWrapper) HttpGetRaw(uri string, headers map[string]string, params map[string]string) (*http.Response, []byte, error) {
 	req, err := createRequest(uri, headers, params)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	body, err := doRequest(*hw.client, req)
+	resp, body, err := doRequest(*hw.client, req)
 	if err != nil {
-		return err
+		return resp, body, err
 	}
 
-	return convertToJSON(body, respBody)
+	return resp, body, nil
+}
+
+func (hw HttpWrapper) HttpGet(uri string, headers map[string]string, params map[string]string, respBody interface{}) (*http.Response, error) {
+	req, err := createRequest(uri, headers, params)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, body, err := doRequest(*hw.client, req)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, convertToJSON(body, respBody)
 }
 
 func createRequest(uri string, headers map[string]string, params map[string]string) (*http.Request, error) {
@@ -72,14 +86,14 @@ func createRequest(uri string, headers map[string]string, params map[string]stri
 	return req, nil
 }
 
-func doRequest(client http.Client, req *http.Request) ([]byte, error) {
+func doRequest(client http.Client, req *http.Request) (*http.Response, []byte, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error performing request: %w", err)
+		return resp, nil, fmt.Errorf("error performing request: %w", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, StatusErr{resp.StatusCode, resp.Status}
+		return resp, nil, StatusErr{resp.StatusCode, resp.Status}
 	}
 
 	defer func() {
@@ -90,9 +104,9 @@ func doRequest(client http.Client, req *http.Request) ([]byte, error) {
 	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
+		return resp, nil, fmt.Errorf("error reading response body: %w", err)
 	}
-	return body, nil
+	return resp, body, nil
 }
 
 func convertToJSON(body []byte, respBody interface{}) error {
